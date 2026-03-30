@@ -9,8 +9,8 @@ generator client {
 // enough when changing adapters.
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
-  provider = "sqlite"
-  url      = "file:dev.sqlite"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Session {
@@ -31,4 +31,75 @@ model Session {
   emailVerified       Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
+}
+
+enum MetalType {
+  GOLD
+  SILVER
+  PLATINUM
+  PALLADIUM
+}
+
+model MetalSpotRate {
+  id String @id @default(cuid())
+
+  // Shopify shop domain (session.shop)
+  shop String
+
+  currency String @default("INR")
+
+  // Gold per gram by purity
+  gold24KPerGram Decimal @db.Decimal(18, 4)
+  gold22KPerGram Decimal @db.Decimal(18, 4)
+  gold18KPerGram Decimal @db.Decimal(18, 4)
+  gold14KPerGram Decimal @db.Decimal(18, 4)
+  gold9KPerGram Decimal @db.Decimal(18, 4)
+
+  // Other metals per gram
+  silverPerGram Decimal @db.Decimal(18, 4)
+  platinumPerGram Decimal @db.Decimal(18, 4)
+  palladiumPerGram Decimal @db.Decimal(18, 4)
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([shop, updatedAt])
+}
+
+model VariantPricingConfig {
+  id String @id @default(cuid())
+
+  shop String
+
+  // Shopify IDs (no metafields; data is stored in this DB)
+  variantGid String
+  productGid String
+
+  // Metal selection + purity
+  metalType MetalType
+  goldPurityKarat Int? // Example: 24/22/18/14/9 (only for GOLD)
+
+  // Inputs
+  metalWeightGrams Decimal @db.Decimal(18, 3)
+
+  diamondPriceINR Decimal @db.Decimal(18, 2)
+  gemstonePriceINR Decimal @db.Decimal(18, 2)
+
+  // Percent / fixed charges
+  makingChargesPercent Decimal @db.Decimal(18, 4) @default(0)
+  wastagePercent Decimal @db.Decimal(18, 4) @default(0)
+  miscChargesINR Decimal @db.Decimal(18, 2) @default(0)
+  shippingChargesPercent Decimal @db.Decimal(18, 4) @default(0)
+  markupPercent Decimal @db.Decimal(18, 4) @default(0)
+  taxPercent Decimal @db.Decimal(18, 4) @default(0)
+  compareAtMarginPercent Decimal? @db.Decimal(18, 4)
+
+  // Last calculated results (for debugging / UI)
+  lastPriceINR Decimal? @db.Decimal(18, 2)
+  lastCompareAtPriceINR Decimal? @db.Decimal(18, 2)
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@unique([shop, variantGid])
 }
