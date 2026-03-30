@@ -31,6 +31,9 @@ model Session {
   emailVerified       Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
+
+  // Shopify Prisma session storage expects the table name `session`
+  @@map("session")
 }
 
 enum MetalType {
