@@ -10,8 +10,14 @@ function shopFromHostParam(hostBase64: string | null): string | null {
   if (!hostBase64) return null;
   try {
     const decoded = Buffer.from(hostBase64, "base64").toString("utf8");
-    const match = decoded.match(/admin\.shopify\.com\/store\/([^/]+)/);
-    if (match?.[1]) return `${match[1]}.myshopify.com`;
+
+    // Case 1: admin.shopify.com/store/{slug}
+    const adminMatch = decoded.match(/admin\.shopify\.com\/store\/([^/]+)/);
+    if (adminMatch?.[1]) return `${adminMatch[1]}.myshopify.com`;
+
+    // Case 2: {shop}.myshopify.com[/admin]
+    const legacyMatch = decoded.match(/(^|\/)([a-z0-9-]+\.myshopify\.com)(\/|$)/i);
+    if (legacyMatch?.[2]) return legacyMatch[2].toLowerCase();
   } catch {
     return null;
   }
