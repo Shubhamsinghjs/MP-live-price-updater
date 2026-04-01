@@ -1,35 +1,18 @@
-import { Page, Layout, Card, Text, BlockStack, Link } from "@shopify/polaris";
-
 export default function Support() {
   return (
-    <Page title="Support">
-      <Layout>
-        <Layout.Section>
-          <Card>
-            <BlockStack gap="300">
-              <Text as="p" variant="bodyMd">
-                Need help with MP-live-gold-price-updater?
-              </Text>
+    <main style={{ maxWidth: 900, margin: "48px auto", padding: "0 16px", lineHeight: 1.6 }}>
+      <h1>Support</h1>
+      <p>Need help with MP-live-gold-price-updater?</p>
 
-              <Text as="h2" variant="headingMd">
-                Contact
-              </Text>
-              <Text as="p" variant="bodyMd">
-                Email: <Link url="mailto:shubham@mumbaipixels.com">shubham@mumbaipixels.com</Link>
-              </Text>
+      <h2>Contact</h2>
+      <p>
+        Email: <a href="mailto:shubham@mumbaipixels.com">shubham@mumbaipixels.com</a>
+      </p>
 
-              <Text as="h2" variant="headingMd">
-                What to include
-              </Text>
-              <Text as="p" variant="bodyMd">
-                Please include your shop domain, the product/variant you were configuring, and a screenshot of any
-                error message shown in the app.
-              </Text>
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-      </Layout>
-    </Page>
+      <h2>What to include</h2>
+      <p>
+        Please include your shop domain, product/variant details, and a screenshot of any error shown in the app.
+      </p>
+    </main>
   );
 }
-

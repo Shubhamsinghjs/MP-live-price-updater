@@ -1,60 +1,36 @@
-import { Page, Layout, Card, Text, BlockStack, Link } from "@shopify/polaris";
-
 export default function TermsOfService() {
   return (
-    <Page title="Terms of Service">
-      <Layout>
-        <Layout.Section>
-          <Card>
-            <BlockStack gap="300">
-              <Text as="p" variant="bodyMd">
-                These Terms of Service (“Terms”) govern your use of MP-live-gold-price-updater (“the App”).
-                By installing or using the App, you agree to these Terms.
-              </Text>
+    <main style={{ maxWidth: 900, margin: "48px auto", padding: "0 16px", lineHeight: 1.6 }}>
+      <h1>Terms of Service</h1>
+      <p>
+        These Terms of Service govern your use of MP-live-gold-price-updater. By installing or using the app,
+        you agree to these terms.
+      </p>
 
-              <Text as="h2" variant="headingMd">
-                Service description
-              </Text>
-              <Text as="p" variant="bodyMd">
-                The App calculates and updates Shopify variant prices based on metal spot rates and configuration
-                you provide inside the App.
-              </Text>
+      <h2>Service description</h2>
+      <p>
+        The app calculates and updates Shopify variant prices based on metal spot rates and configuration
+        you provide.
+      </p>
 
-              <Text as="h2" variant="headingMd">
-                Merchant responsibilities
-              </Text>
-              <Text as="p" variant="bodyMd">
-                You are responsible for verifying pricing inputs, taxes, and final prices before selling products.
-                The App updates variant prices in Shopify based on your saved settings.
-              </Text>
+      <h2>Merchant responsibilities</h2>
+      <p>
+        You are responsible for verifying inputs, taxes, and final prices before products are sold.
+      </p>
 
-              <Text as="h2" variant="headingMd">
-                Availability and changes
-              </Text>
-              <Text as="p" variant="bodyMd">
-                We may update the App from time to time. We do not guarantee uninterrupted availability.
-              </Text>
+      <h2>Availability and changes</h2>
+      <p>We may update the app from time to time and do not guarantee uninterrupted availability.</p>
 
-              <Text as="h2" variant="headingMd">
-                Limitation of liability
-              </Text>
-              <Text as="p" variant="bodyMd">
-                To the maximum extent permitted by law, we are not liable for lost profits, lost revenue, or any
-                indirect damages arising from use of the App.
-              </Text>
+      <h2>Limitation of liability</h2>
+      <p>
+        To the maximum extent permitted by law, we are not liable for indirect or consequential damages
+        arising from use of the app.
+      </p>
 
-              <Text as="h2" variant="headingMd">
-                Contact
-              </Text>
-              <Text as="p" variant="bodyMd">
-                For questions or support, email{" "}
-                <Link url="mailto:shubham@mumbaipixels.com">shubham@mumbaipixels.com</Link>.
-              </Text>
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-      </Layout>
-    </Page>
+      <h2>Contact</h2>
+      <p>
+        For support, email <a href="mailto:shubham@mumbaipixels.com">shubham@mumbaipixels.com</a>.
+      </p>
+    </main>
   );
 }
-
