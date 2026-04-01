@@ -239,38 +239,71 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json<ActionData>({ ok: false, error: "Unknown intent." }, { status: 400 });
 };
 
+function ratesFormStateFromLoader(
+  rates: LoaderData["rates"],
+): Record<string, string> {
+  if (!rates) {
+    return {
+      gold24KPerGram: "",
+      gold22KPerGram: "",
+      gold18KPerGram: "",
+      gold14KPerGram: "",
+      gold9KPerGram: "",
+      silverPerGram: "",
+      platinumPerGram: "",
+      palladiumPerGram: "",
+    };
+  }
+  return {
+    gold24KPerGram: String(Number(rates.gold24KPerGram)),
+    gold22KPerGram: String(Number(rates.gold22KPerGram)),
+    gold18KPerGram: String(Number(rates.gold18KPerGram)),
+    gold14KPerGram: String(Number(rates.gold14KPerGram)),
+    gold9KPerGram: String(Number(rates.gold9KPerGram)),
+    silverPerGram: String(Number(rates.silverPerGram)),
+    platinumPerGram: String(Number(rates.platinumPerGram)),
+    palladiumPerGram: String(Number(rates.palladiumPerGram)),
+  };
+}
+
 export default function Dashboard() {
   const { rates, lastUpdatedAt } = useLoaderData<typeof loader>();
-  const fetcher = useFetcher<ActionData>();
+  const saveFetcher = useFetcher<ActionData>();
+  const refreshFetcher = useFetcher<ActionData>();
   const shopify = useAppBridge();
 
-  const [form, setForm] = useState({
-    gold24KPerGram: rates ? String(Number(rates.gold24KPerGram)) : "",
-    gold22KPerGram: rates ? String(Number(rates.gold22KPerGram)) : "",
-    gold18KPerGram: rates ? String(Number(rates.gold18KPerGram)) : "",
-    gold14KPerGram: rates ? String(Number(rates.gold14KPerGram)) : "",
-    gold9KPerGram: rates ? String(Number(rates.gold9KPerGram)) : "",
-    silverPerGram: rates ? String(Number(rates.silverPerGram)) : "",
-    platinumPerGram: rates ? String(Number(rates.platinumPerGram)) : "",
-    palladiumPerGram: rates ? String(Number(rates.palladiumPerGram)) : "",
-  });
+  const [form, setForm] = useState(() => ratesFormStateFromLoader(rates));
 
   useEffect(() => {
-    if (!fetcher.data) return;
-    if (!fetcher.data.ok) {
-      shopify.toast.show(fetcher.data.error);
+    setForm(ratesFormStateFromLoader(rates));
+  }, [lastUpdatedAt, rates]);
+
+  useEffect(() => {
+    if (!saveFetcher.data) return;
+    if (!saveFetcher.data.ok) {
+      shopify.toast.show(saveFetcher.data.error);
       return;
     }
-    if (fetcher.data.mode === "save_rates") {
+    if (saveFetcher.data.mode === "save_rates") {
       shopify.toast.show("Metal rates saved.");
-    } else {
+    }
+  }, [saveFetcher.data, shopify]);
+
+  useEffect(() => {
+    if (!refreshFetcher.data) return;
+    if (!refreshFetcher.data.ok) {
+      shopify.toast.show(refreshFetcher.data.error);
+      return;
+    }
+    if (refreshFetcher.data.mode === "refresh_prices") {
       shopify.toast.show(
-        `Prices refreshed: ${fetcher.data.updatedVariants} variants.`,
+        `Prices refreshed: ${refreshFetcher.data.updatedVariants} variants.`,
       );
     }
-  }, [fetcher.data, shopify]);
+  }, [refreshFetcher.data, shopify]);
 
-  const isBusy = fetcher.state !== "idle";
+  const saveBusy = saveFetcher.state !== "idle";
+  const refreshBusy = refreshFetcher.state !== "idle";
 
   return (
     <Page>
@@ -291,7 +324,7 @@ export default function Dashboard() {
                   {lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleString() : "Not set"}
                 </Text>
 
-                <fetcher.Form method="post">
+                <saveFetcher.Form method="post">
                   <input type="hidden" name="intent" value="save_rates" />
                   <InlineGrid columns={2} gap="300">
                     <TextField
@@ -361,11 +394,11 @@ export default function Dashboard() {
                   </InlineGrid>
 
                   <BlockStack>
-                    <Button primary submit loading={isBusy}>
+                    <Button submit variant="primary" loading={saveBusy}>
                       Save Rates
                     </Button>
                   </BlockStack>
-                </fetcher.Form>
+                </saveFetcher.Form>
               </BlockStack>
             </Card>
 
@@ -377,12 +410,12 @@ export default function Dashboard() {
                 <Text variant="bodyMd" as="p">
                   This will update all variants that you configured in the Products page.
                 </Text>
-                <fetcher.Form method="post">
+                <refreshFetcher.Form method="post">
                   <input type="hidden" name="intent" value="refresh_prices" />
-                  <Button submit loading={isBusy}>
+                  <Button submit loading={refreshBusy}>
                     Refresh Prices
                   </Button>
-                </fetcher.Form>
+                </refreshFetcher.Form>
               </BlockStack>
             </Card>
           </BlockStack>

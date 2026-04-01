@@ -1,16 +1,16 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useFetcher, useLoaderData } from "@remix-run/react";
 import {
   BlockStack,
   Button,
   Card,
+  InlineGrid,
+  InlineStack,
   Layout,
   Page,
   Text,
-  TextField,
-  InlineGrid,
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../../shopify.server";
@@ -28,6 +28,8 @@ type VariantRow = {
   configured: boolean;
   previewPrice: string | null;
   previewCompareAtPrice: string | null;
+  /** ISO timestamp; bumps when config row updates so the form can remount with saved values */
+  configUpdatedAt: string | null;
   config?: VariantPricingConfig;
 };
 
@@ -141,6 +143,7 @@ export const loader = async ({
         configured: Boolean(cfg),
         previewPrice,
         previewCompareAtPrice,
+        configUpdatedAt: cfg?.updatedAt?.toISOString() ?? null,
         config: cfg ?? undefined,
       };
     });
@@ -219,10 +222,49 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return json<ActionData>({ ok: true });
 };
 
-export default function Products() {
-  const { products, ratesPresent } = useLoaderData<typeof loader>();
+function dToStr(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  const n = Number(v);
+  return Number.isFinite(n) ? String(v) : String(v);
+}
+
+function configToFieldState(cfg: VariantPricingConfig | undefined) {
+  return {
+    metalType: (cfg?.metalType ?? "GOLD") as string,
+    goldPurityKarat:
+      cfg?.goldPurityKarat !== null && cfg?.goldPurityKarat !== undefined
+        ? String(cfg.goldPurityKarat)
+        : "",
+    metalWeightGrams: cfg?.metalWeightGrams != null ? dToStr(cfg.metalWeightGrams) : "",
+    diamondPriceINR: cfg?.diamondPriceINR != null ? dToStr(cfg.diamondPriceINR) : "",
+    gemstonePriceINR: cfg?.gemstonePriceINR != null ? dToStr(cfg.gemstonePriceINR) : "",
+    makingChargesPercent: cfg?.makingChargesPercent != null ? dToStr(cfg.makingChargesPercent) : "0",
+    wastagePercent: cfg?.wastagePercent != null ? dToStr(cfg.wastagePercent) : "0",
+    miscChargesINR: cfg?.miscChargesINR != null ? dToStr(cfg.miscChargesINR) : "0",
+    shippingChargesPercent:
+      cfg?.shippingChargesPercent != null ? dToStr(cfg.shippingChargesPercent) : "0",
+    markupPercent: cfg?.markupPercent != null ? dToStr(cfg.markupPercent) : "0",
+    taxPercent: cfg?.taxPercent != null ? dToStr(cfg.taxPercent) : "0",
+    compareAtMarginPercent:
+      cfg?.compareAtMarginPercent != null ? dToStr(cfg.compareAtMarginPercent) : "",
+  };
+}
+
+type FieldState = ReturnType<typeof configToFieldState>;
+
+function VariantConfigForm({ v, productId }: { v: VariantRow; productId: string }) {
   const fetcher = useFetcher<ActionData>();
   const shopify = useAppBridge();
+  const configVersion = v.configUpdatedAt ?? "new";
+  const [open, setOpen] = useState(false);
+
+  const [fields, setFields] = useState<FieldState>(() =>
+    configToFieldState(v.config),
+  );
+
+  useEffect(() => {
+    setFields(configToFieldState(v.config));
+  }, [configVersion]);
 
   useEffect(() => {
     if (!fetcher.data) return;
@@ -232,6 +274,257 @@ export default function Products() {
       shopify.toast.show(fetcher.data.error);
     }
   }, [fetcher.data, shopify]);
+
+  const setF = <K extends keyof FieldState>(key: K, value: FieldState[K]) => {
+    setFields((p) => ({ ...p, [key]: value }));
+  };
+
+  const panelId = useMemo(
+    () => `variant-panel-${v.variantId.replace(/[^a-zA-Z0-9_-]/g, "-")}`,
+    [v.variantId],
+  );
+
+  const inputStyle: CSSProperties = {
+    width: "100%",
+    marginTop: 8,
+    padding: "10px 12px",
+    borderRadius: 8,
+    border: "1px solid #c9cccf",
+    fontSize: "0.925rem",
+    background: "var(--p-color-bg-surface, #fff)",
+    boxSizing: "border-box",
+  };
+
+  return (
+    <Card>
+      <BlockStack gap="200">
+        <InlineStack align="space-between" blockAlign="center" gap="300" wrap>
+          <BlockStack gap="100">
+            <Text as="h3" variant="headingSm">
+              {v.title}
+            </Text>
+            <Text as="p" variant="bodyMd" tone="subdued">
+              SKU: {v.sku ?? "—"} · Shopify: {v.shopifyPrice ?? "—"}
+              {v.previewPrice ? ` · Preview: ${v.previewPrice}` : ""}
+            </Text>
+            {v.previewCompareAtPrice && (
+              <Text as="p" variant="bodyMd" tone="subdued">
+                Compare-at preview: {v.previewCompareAtPrice}
+              </Text>
+            )}
+          </BlockStack>
+          <Button
+            ariaControls={panelId}
+            ariaExpanded={open}
+            onClick={() => setOpen((p) => !p)}
+          >
+            {open ? "Hide" : "Edit"}
+          </Button>
+        </InlineStack>
+
+        <div id={panelId} style={{ display: open ? "block" : "none" }}>
+          <BlockStack gap="300">
+            <fetcher.Form method="post">
+            <input type="hidden" name="intent" value="save_variant_config" />
+            <input type="hidden" name="variantGid" value={v.variantId} />
+            <input type="hidden" name="productGid" value={productId} />
+
+            <InlineGrid columns={2} gap="300">
+              <div>
+                <Text as="h4" variant="headingXs">
+                  Metal Type
+                </Text>
+                <select
+                  name="metalType"
+                  value={fields.metalType}
+                  onChange={(e) => setF("metalType", e.target.value)}
+                  style={{
+                    width: "100%",
+                    marginTop: 8,
+                    padding: "10px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #c9cccf",
+                    fontSize: "0.925rem",
+                    background: "var(--p-color-bg-surface, #fff)",
+                  }}
+                >
+                  <option value="GOLD">Gold</option>
+                  <option value="SILVER">Silver</option>
+                  <option value="PLATINUM">Platinum</option>
+                  <option value="PALLADIUM">Palladium</option>
+                </select>
+              </div>
+
+              <div>
+                <Text as="h4" variant="headingXs">
+                  Gold Purity Karat (24/22/18/14/9)
+                </Text>
+                <input
+                  name="goldPurityKarat"
+                  value={fields.goldPurityKarat}
+                  onChange={(e) => setF("goldPurityKarat", e.target.value)}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <Text as="h4" variant="headingXs">
+                  Metal Weight (grams)
+                </Text>
+                <input
+                  name="metalWeightGrams"
+                  value={fields.metalWeightGrams}
+                  onChange={(e) => setF("metalWeightGrams", e.target.value)}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <Text as="h4" variant="headingXs">
+                  Diamond Price (INR)
+                </Text>
+                <input
+                  name="diamondPriceINR"
+                  value={fields.diamondPriceINR}
+                  onChange={(e) => setF("diamondPriceINR", e.target.value)}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <Text as="h4" variant="headingXs">
+                  Gemstone Price (INR)
+                </Text>
+                <input
+                  name="gemstonePriceINR"
+                  value={fields.gemstonePriceINR}
+                  onChange={(e) => setF("gemstonePriceINR", e.target.value)}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <Text as="h4" variant="headingXs">
+                  Making Charges %
+                </Text>
+                <input
+                  name="makingChargesPercent"
+                  value={fields.makingChargesPercent}
+                  onChange={(e) => setF("makingChargesPercent", e.target.value)}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <Text as="h4" variant="headingXs">
+                  Wastage %
+                </Text>
+                <input
+                  name="wastagePercent"
+                  value={fields.wastagePercent}
+                  onChange={(e) => setF("wastagePercent", e.target.value)}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <Text as="h4" variant="headingXs">
+                  Misc Charges (INR)
+                </Text>
+                <input
+                  name="miscChargesINR"
+                  value={fields.miscChargesINR}
+                  onChange={(e) => setF("miscChargesINR", e.target.value)}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <Text as="h4" variant="headingXs">
+                  Shipping Charges %
+                </Text>
+                <input
+                  name="shippingChargesPercent"
+                  value={fields.shippingChargesPercent}
+                  onChange={(e) => setF("shippingChargesPercent", e.target.value)}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <Text as="h4" variant="headingXs">
+                  Markup %
+                </Text>
+                <input
+                  name="markupPercent"
+                  value={fields.markupPercent}
+                  onChange={(e) => setF("markupPercent", e.target.value)}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <Text as="h4" variant="headingXs">
+                  Tax %
+                </Text>
+                <input
+                  name="taxPercent"
+                  value={fields.taxPercent}
+                  onChange={(e) => setF("taxPercent", e.target.value)}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <Text as="h4" variant="headingXs">
+                  Compare-at Margin % (optional)
+                </Text>
+                <input
+                  name="compareAtMarginPercent"
+                  value={fields.compareAtMarginPercent}
+                  onChange={(e) => setF("compareAtMarginPercent", e.target.value)}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  style={inputStyle}
+                />
+              </div>
+            </InlineGrid>
+
+            <BlockStack>
+              <Button submit variant="primary" loading={fetcher.state !== "idle"}>
+                Save Config
+              </Button>
+            </BlockStack>
+          </fetcher.Form>
+        </BlockStack>
+        </div>
+      </BlockStack>
+    </Card>
+  );
+}
+
+export default function Products() {
+  const { products, ratesPresent } = useLoaderData<typeof loader>();
 
   return (
     <Page>
@@ -259,136 +552,7 @@ export default function Products() {
 
                   <BlockStack gap="300">
                     {p.variants.map((v) => (
-                      <Card key={v.variantId}>
-                        <BlockStack gap="200">
-                          <Text as="h3" variant="headingSm">
-                            {v.title}
-                          </Text>
-                          <Text as="p" variant="bodyMd">
-                            SKU: {v.sku ?? "—"}
-                          </Text>
-                          <Text as="p" variant="bodyMd">
-                            Shopify Price: {v.shopifyPrice ?? "—"}{" "}
-                            {v.previewPrice ? `| Preview: ${v.previewPrice}` : ""}
-                          </Text>
-                          {v.previewCompareAtPrice && (
-                            <Text as="p" variant="bodyMd">
-                              Compare-at Preview: {v.previewCompareAtPrice}
-                            </Text>
-                          )}
-
-                          <fetcher.Form method="post">
-                            <input type="hidden" name="intent" value="save_variant_config" />
-                            <input type="hidden" name="variantGid" value={v.variantId} />
-                            <input type="hidden" name="productGid" value={v.productId} />
-
-                            <InlineGrid columns={2} gap="300">
-                              <div>
-                                <Text as="h4" variant="headingXs">
-                                  Metal Type
-                                </Text>
-                                <select
-                                  name="metalType"
-                                  defaultValue={v.config?.metalType ?? "GOLD"}
-                                  style={{ width: "100%", padding: 8, borderRadius: 6 }}
-                                >
-                                  <option value="GOLD">Gold</option>
-                                  <option value="SILVER">Silver</option>
-                                  <option value="PLATINUM">Platinum</option>
-                                  <option value="PALLADIUM">Palladium</option>
-                                </select>
-                              </div>
-
-                              <TextField
-                                label="Gold Purity Karat (24/22/18/14/9)"
-                                name="goldPurityKarat"
-                                defaultValue={
-                                  v.config?.goldPurityKarat !== null && v.config?.goldPurityKarat !== undefined
-                                    ? String(v.config.goldPurityKarat)
-                                    : ""
-                                }
-                                inputMode="numeric"
-                              />
-
-                              <TextField
-                                label="Metal Weight (grams)"
-                                name="metalWeightGrams"
-                                defaultValue={v.config?.metalWeightGrams ? String(v.config.metalWeightGrams) : ""}
-                                inputMode="decimal"
-                              />
-
-                              <TextField
-                                label="Diamond Price (INR)"
-                                name="diamondPriceINR"
-                                defaultValue={v.config?.diamondPriceINR ? String(v.config.diamondPriceINR) : ""}
-                                inputMode="decimal"
-                              />
-
-                              <TextField
-                                label="Gemstone Price (INR)"
-                                name="gemstonePriceINR"
-                                defaultValue={v.config?.gemstonePriceINR ? String(v.config.gemstonePriceINR) : ""}
-                                inputMode="decimal"
-                              />
-
-                              <TextField
-                                label="Making Charges %"
-                                name="makingChargesPercent"
-                                defaultValue={v.config?.makingChargesPercent ? String(v.config.makingChargesPercent) : "0"}
-                                inputMode="decimal"
-                              />
-
-                              <TextField
-                                label="Wastage %"
-                                name="wastagePercent"
-                                defaultValue={v.config?.wastagePercent ? String(v.config.wastagePercent) : "0"}
-                                inputMode="decimal"
-                              />
-
-                              <TextField
-                                label="Misc Charges (INR)"
-                                name="miscChargesINR"
-                                defaultValue={v.config?.miscChargesINR ? String(v.config.miscChargesINR) : "0"}
-                                inputMode="decimal"
-                              />
-
-                              <TextField
-                                label="Shipping Charges %"
-                                name="shippingChargesPercent"
-                                defaultValue={v.config?.shippingChargesPercent ? String(v.config.shippingChargesPercent) : "0"}
-                                inputMode="decimal"
-                              />
-
-                              <TextField
-                                label="Markup %"
-                                name="markupPercent"
-                                defaultValue={v.config?.markupPercent ? String(v.config.markupPercent) : "0"}
-                                inputMode="decimal"
-                              />
-
-                              <TextField
-                                label="Tax %"
-                                name="taxPercent"
-                                defaultValue={v.config?.taxPercent ? String(v.config.taxPercent) : "0"}
-                                inputMode="decimal"
-                              />
-
-                              <TextField
-                                label="Compare-at Margin % (optional)"
-                                name="compareAtMarginPercent"
-                                defaultValue={v.config?.compareAtMarginPercent ? String(v.config.compareAtMarginPercent) : ""}
-                                inputMode="decimal"
-                              />
-                            </InlineGrid>
-
-                            <BlockStack>
-                              <Button submit primary>
-                                Save Config
-                              </Button>
-                            </BlockStack>
-                          </fetcher.Form>
-                        </BlockStack>
-                      </Card>
+                      <VariantConfigForm key={v.variantId} v={v} productId={p.productId} />
                     ))}
                   </BlockStack>
                 </BlockStack>

@@ -14,6 +14,10 @@ import polarisTranslations from "@shopify/polaris/locales/en.json";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
 
 import { login } from "../../shopify.server";
+import {
+  redirectToAuthWithContext,
+  resolveEmbeddedShop,
+} from "../../lib/embedded-shop.server";
 
 import { loginErrorMessage } from "./error.server";
 
@@ -22,24 +26,26 @@ export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
 
-  // If the request already knows the shop (common inside Shopify admin),
-  // skip the manual form and start OAuth immediately.
-  const shopFromQuery = url.searchParams.get("shop");
-  if (shopFromQuery) {
-    throw redirect(`/auth?shop=${encodeURIComponent(shopFromQuery)}`);
+  // Skip the manual login form whenever we can infer the shop (embedded admin,
+  // host param, or Referer from admin.shopify.com/store/{slug}/...).
+  const shopResolved = resolveEmbeddedShop(request);
+  if (shopResolved) {
+    redirectToAuthWithContext(request, shopResolved);
   }
 
-  // Sometimes Shopify sends the shop param in Referer when iframe navigates.
+  // Referer may include ?shop= on some navigations (not covered above).
   const referer = request.headers.get("referer");
   if (referer) {
     try {
       const refUrl = new URL(referer);
       const shopFromRef = refUrl.searchParams.get("shop");
       if (shopFromRef) {
-        throw redirect(`/auth?shop=${encodeURIComponent(shopFromRef)}`);
+        const next = new URL("/auth", url.origin);
+        next.searchParams.set("shop", shopFromRef);
+        throw redirect(next.toString());
       }
-    } catch {
-      // ignore bad referer
+    } catch (e) {
+      if (e instanceof Response) throw e;
     }
   }
 
