@@ -45,7 +45,9 @@ type LoaderData = {
   ratesPresent: boolean;
 };
 
-type ActionData = { ok: true } | { ok: false; error: string };
+type ActionData =
+  | { ok: true; updatedShopify: boolean; shopifyPrice?: string; shopifyCompareAtPrice?: string | null }
+  | { ok: false; error: string };
 
 function normalizeRateSnapshot(rates: MetalSpotRate) {
   return {
@@ -160,7 +162,7 @@ export const loader = async ({
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const shop = session.shop;
 
   const formData = await request.formData();
@@ -208,7 +210,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   };
 
   // Composite unique key: @@unique([shop, variantGid])
-  await db.variantPricingConfig.upsert({
+  const saved = await db.variantPricingConfig.upsert({
     where: {
       shop_variantGid: {
         shop,
@@ -219,7 +221,66 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     create: common,
   });
 
-  return json<ActionData>({ ok: true });
+  // If rates exist, immediately push the calculated price to Shopify so storefront updates too.
+  const latestRates = await db.metalSpotRate.findFirst({
+    where: { shop },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  if (!latestRates) {
+    return json<ActionData>({
+      ok: true,
+      updatedShopify: false,
+    });
+  }
+
+  const rateSnapshot = normalizeRateSnapshot(latestRates);
+  const computed = computeVariantPrices(rateSnapshot as any, saved as VariantPricingConfig);
+
+  const mutation = `#graphql
+    mutation updateVariantNow($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+        productVariants { id price compareAtPrice }
+        userErrors { field message }
+      }
+    }
+  `;
+
+  const gqlVariant: { id: string; price: string; compareAtPrice?: string } = {
+    id: variantGid,
+    price: asMoneyString(computed.priceINR),
+  };
+  if (computed.compareAtPriceINR !== null && computed.compareAtPriceINR !== undefined) {
+    gqlVariant.compareAtPrice = asMoneyString(computed.compareAtPriceINR);
+  }
+
+  const resp = await admin.graphql(mutation, {
+    variables: { productId: productGid, variants: [gqlVariant] },
+  });
+  const payload = await resp.json();
+  const errors = payload?.data?.productVariantsBulkUpdate?.userErrors ?? [];
+  if (errors.length > 0) {
+    return json<ActionData>(
+      { ok: false, error: errors[0]?.message ?? "Shopify update error." },
+      { status: 400 },
+    );
+  }
+
+  await db.variantPricingConfig.update({
+    where: { id: saved.id },
+    data: {
+      lastPriceINR: computed.priceINR,
+      lastCompareAtPriceINR: computed.compareAtPriceINR,
+    },
+  });
+
+  return json<ActionData>({
+    ok: true,
+    updatedShopify: true,
+    shopifyPrice: asMoneyString(computed.priceINR),
+    shopifyCompareAtPrice:
+      computed.compareAtPriceINR === null ? null : asMoneyString(computed.compareAtPriceINR),
+  });
 };
 
 function dToStr(v: unknown): string {
@@ -269,7 +330,11 @@ function VariantConfigForm({ v, productId }: { v: VariantRow; productId: string 
   useEffect(() => {
     if (!fetcher.data) return;
     if (fetcher.data.ok) {
-      shopify.toast.show("Variant configuration saved.");
+      if (fetcher.data.updatedShopify) {
+        shopify.toast.show("Saved and Shopify price updated.");
+      } else {
+        shopify.toast.show("Saved. Set rates on Dashboard to auto-update Shopify.");
+      }
     } else {
       shopify.toast.show(fetcher.data.error);
     }
